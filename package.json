@@ -1,18 +1,19 @@
 {
-  "name": "dental-lab-tracker-backend",
+  "name": "kiln-lab-frontend",
   "version": "1.0.0",
-  "description": "Backend for the dental lab order tracker (clinic <-> lab)",
-  "main": "server.js",
-  "type": "commonjs",
+  "private": true,
+  "type": "module",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "better-sqlite3": "^11.3.0",
-    "cors": "^2.8.5",
-    "bcryptjs": "^2.4.3",
-    "jsonwebtoken": "^9.0.2"
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "vite": "^5.4.1"
   }
 }

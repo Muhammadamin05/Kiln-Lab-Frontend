@@ -14,6 +14,12 @@ const STAGES = ["Принят", "Модель", "Каркас", "Облицов�
 const WORK_TYPES = ["Коронка, цирконий", "Виниры", "Съёмный протез", "Каркас", "Капа"];
 const QUICK_SHADES = ["A1", "A2", "A3", "B1", "B2", "C2"];
 
+// FDI tooth numbering: upper right 18-11, upper left 21-28, lower left 38-31, lower right 41-48
+const UPPER_RIGHT = [18, 17, 16, 15, 14, 13, 12, 11];
+const UPPER_LEFT = [21, 22, 23, 24, 25, 26, 27, 28];
+const LOWER_LEFT = [31, 32, 33, 34, 35, 36, 37, 38];
+const LOWER_RIGHT = [48, 47, 46, 45, 44, 43, 42, 41];
+
 const inputStyle = { width: "100%", height: 36, borderRadius: 8, border: "0.5px solid #c9c7bd", padding: "0 10px", boxSizing: "border-box" };
 const labelStyle = { fontSize: 12, color: "#767468", display: "block", marginBottom: 4 };
 
@@ -22,8 +28,43 @@ function formatDue(dateStr) {
   return new Date(dateStr).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
 }
 
+function ToothChart({ selected, onToggle }) {
+  const renderTooth = (num) => {
+    const isSelected = selected.includes(num);
+    return (
+      <button
+        key={num}
+        type="button"
+        onClick={() => onToggle(num)}
+        style={{
+          width: 28, height: 28, borderRadius: 6, fontSize: 10, cursor: "pointer",
+          border: isSelected ? "1.5px solid #185fa5" : "0.5px solid #c9c7bd",
+          background: isSelected ? "#0c447c" : "#fff",
+          color: isSelected ? "#fff" : "#767468",
+          fontWeight: isSelected ? 600 : 400,
+        }}
+      >{num}</button>
+    );
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "center" }}>
+      <div style={{ display: "flex", gap: 3 }}>
+        {UPPER_RIGHT.map(renderTooth)}
+        <div style={{ width: 8 }} />
+        {UPPER_LEFT.map(renderTooth)}
+      </div>
+      <div style={{ display: "flex", gap: 3 }}>
+        {LOWER_RIGHT.map(renderTooth)}
+        <div style={{ width: 8 }} />
+        {LOWER_LEFT.map(renderTooth)}
+      </div>
+    </div>
+  );
+}
+
 function AuthScreen({ onLogin }) {
-  const [mode, setMode] = useState("login"); // "login" | "register"
+  const [mode, setMode] = useState("login");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -31,17 +72,12 @@ function AuthScreen({ onLogin }) {
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!name.trim() || !password) {
-      setError("Заполните оба поля");
-      return;
-    }
+    if (!name.trim() || !password) return setError("Заполните оба поля");
     setError("");
     setSubmitting(true);
     try {
       const endpoint = mode === "login" ? "/auth/login" : "/auth/register";
-      const payload = mode === "login"
-        ? { name: name.trim(), password }
-        : { clinicName: name.trim(), password };
+      const payload = mode === "login" ? { name: name.trim(), password } : { clinicName: name.trim(), password };
       const res = await fetch(`${API_BASE}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -118,6 +154,7 @@ function OrderCard({ order, role, onAdvance, onAssign }) {
   const progressPct = Math.round(((order.stageIndex + 1) / STAGES.length) * 100);
   const canAdvance = role === "lab" && order.stageIndex < STAGES.length - 1;
   const [showAssign, setShowAssign] = useState(false);
+  const fittingDates = (order.fittingDates || []).filter(Boolean);
 
   return (
     <div style={{ border: "0.5px solid #e3e1d9", borderRadius: 12, padding: "14px 16px", background: "#fff", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -132,7 +169,13 @@ function OrderCard({ order, role, onAdvance, onAssign }) {
         <p style={{ fontSize: 12, color: "#9a988c", margin: 0 }}>
           {order.doctor && `Врач: ${order.doctor}`}
           {order.toothCount ? ` · Зубов: ${order.toothCount}` : ""}
-          {order.toothPositions ? ` · Положение: ${order.toothPositions}` : ""}
+          {order.toothPositions ? ` · Зубы: ${order.toothPositions}` : ""}
+        </p>
+      )}
+      {(order.trayInfo || fittingDates.length > 0) && (
+        <p style={{ fontSize: 12, color: "#9a988c", margin: 0 }}>
+          {order.trayInfo && `Ложка/оттиск: ${order.trayInfo}`}
+          {fittingDates.length > 0 ? ` · Примерки: ${fittingDates.map(formatDue).join(", ")}` : ""}
         </p>
       )}
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -173,16 +216,31 @@ function OrderCard({ order, role, onAdvance, onAssign }) {
   );
 }
 
-function NewOrderForm({ onCreate, onCancel }) {
+function NewOrderForm({ doctors, onAddDoctor, onCreate, onCancel }) {
   const [patient, setPatient] = useState("");
   const [doctor, setDoctor] = useState("");
-  const [toothCount, setToothCount] = useState("");
-  const [toothPositions, setToothPositions] = useState("");
+  const [newDoctorName, setNewDoctorName] = useState("");
+  const [selectedTeeth, setSelectedTeeth] = useState([]);
   const [workType, setWorkType] = useState(WORK_TYPES[0]);
   const [shade, setShade] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [trayInfo, setTrayInfo] = useState("");
+  const [fittingDate1, setFittingDate1] = useState("");
+  const [fittingDate2, setFittingDate2] = useState("");
+  const [fittingDate3, setFittingDate3] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  const toggleTooth = (num) => {
+    setSelectedTeeth((prev) => prev.includes(num) ? prev.filter((t) => t !== num) : [...prev, num].sort((a, b) => a - b));
+  };
+
+  const addDoctor = async () => {
+    if (!newDoctorName.trim()) return;
+    const created = await onAddDoctor(newDoctorName.trim());
+    setNewDoctorName("");
+    if (created) setDoctor(created.name);
+  };
 
   const submit = async () => {
     if (!patient.trim()) return setError("Укажите пациента");
@@ -192,12 +250,14 @@ function NewOrderForm({ onCreate, onCancel }) {
     try {
       await onCreate({
         patient: patient.trim(),
-        doctor: doctor.trim(),
-        toothCount: toothCount ? Number(toothCount) : null,
-        toothPositions: toothPositions.trim(),
+        doctor,
+        toothCount: selectedTeeth.length || null,
+        toothPositions: selectedTeeth.join(", "),
         workType,
         shade: shade.trim(),
         dueDate,
+        trayInfo: trayInfo.trim(),
+        fittingDates: [fittingDate1, fittingDate2, fittingDate3],
       });
     } catch (err) {
       setError(err.message || "Не удалось создать заказ");
@@ -212,26 +272,31 @@ function NewOrderForm({ onCreate, onCancel }) {
         <label style={labelStyle}>Пациент</label>
         <input value={patient} onChange={(e) => setPatient(e.target.value)} placeholder="Фамилия и инициалы" style={inputStyle} />
       </div>
+
       <div>
         <label style={labelStyle}>Врач</label>
-        <input value={doctor} onChange={(e) => setDoctor(e.target.value)} placeholder="Имя врача" style={inputStyle} />
-      </div>
-      <div style={{ display: "flex", gap: 8 }}>
-        <div style={{ flex: 1 }}>
-          <label style={labelStyle}>Количество зубов</label>
-          <input value={toothCount} onChange={(e) => setToothCount(e.target.value)} type="number" min="0" style={inputStyle} />
-        </div>
-        <div style={{ flex: 2 }}>
-          <label style={labelStyle}>Положение (номера зубов)</label>
-          <input value={toothPositions} onChange={(e) => setToothPositions(e.target.value)} placeholder="Например: 11, 12, 21" style={inputStyle} />
+        <select value={doctor} onChange={(e) => setDoctor(e.target.value)} style={{ ...inputStyle, marginBottom: 6 }}>
+          <option value="">— выбрать —</option>
+          {doctors.map((d) => <option key={d.id} value={d.name}>{d.name}</option>)}
+        </select>
+        <div style={{ display: "flex", gap: 6 }}>
+          <input value={newDoctorName} onChange={(e) => setNewDoctorName(e.target.value)} placeholder="Добавить нового врача" style={{ ...inputStyle, height: 32 }} />
+          <button type="button" onClick={addDoctor} style={{ height: 32, padding: "0 10px", borderRadius: 8, border: "0.5px solid #c9c7bd", background: "transparent", fontSize: 12, cursor: "pointer" }}>+</button>
         </div>
       </div>
+
+      <div>
+        <label style={labelStyle}>Зубы (нажми, чтобы выбрать) {selectedTeeth.length > 0 && `— выбрано ${selectedTeeth.length}`}</label>
+        <ToothChart selected={selectedTeeth} onToggle={toggleTooth} />
+      </div>
+
       <div>
         <label style={labelStyle}>Тип работы</label>
         <select value={workType} onChange={(e) => setWorkType(e.target.value)} style={inputStyle}>
           {WORK_TYPES.map((w) => <option key={w} value={w}>{w}</option>)}
         </select>
       </div>
+
       <div>
         <label style={labelStyle}>Цвет по Vita (можно точный, например 3.5)</label>
         <input value={shade} onChange={(e) => setShade(e.target.value)} placeholder="Например: A2 или 3.5" style={{ ...inputStyle, marginBottom: 6 }} />
@@ -241,10 +306,26 @@ function NewOrderForm({ onCreate, onCancel }) {
           ))}
         </div>
       </div>
+
+      <div>
+        <label style={labelStyle}>Ложка / оттиск</label>
+        <input value={trayInfo} onChange={(e) => setTrayInfo(e.target.value)} placeholder="Например: 2 сл. локи, трансфер" style={inputStyle} />
+      </div>
+
       <div>
         <label style={labelStyle}>Срок сдачи</label>
         <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} style={inputStyle} />
       </div>
+
+      <div>
+        <label style={labelStyle}>Даты примерок (необязательно)</label>
+        <div style={{ display: "flex", gap: 6 }}>
+          <input type="date" value={fittingDate1} onChange={(e) => setFittingDate1(e.target.value)} style={inputStyle} />
+          <input type="date" value={fittingDate2} onChange={(e) => setFittingDate2(e.target.value)} style={inputStyle} />
+          <input type="date" value={fittingDate3} onChange={(e) => setFittingDate3(e.target.value)} style={inputStyle} />
+        </div>
+      </div>
+
       {error && <span style={{ fontSize: 13, color: "#a32d2d" }}>{error}</span>}
       <div style={{ display: "flex", gap: 8 }}>
         <button onClick={submit} disabled={submitting} style={{ flex: 1, height: 38, borderRadius: 8, border: "none", background: "#1a1a18", color: "#fff", fontWeight: 500, cursor: "pointer" }}>
@@ -256,13 +337,61 @@ function NewOrderForm({ onCreate, onCancel }) {
   );
 }
 
+function ClinicsPanel({ authHeader }) {
+  const [clinics, setClinics] = useState([]);
+  const [newClinicName, setNewClinicName] = useState("");
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    const res = await fetch(`${API_BASE}/clinics`, { headers: authHeader() });
+    if (res.ok) setClinics(await res.json());
+  }, [authHeader]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const addClinic = async () => {
+    if (!newClinicName.trim()) return;
+    setError("");
+    const res = await fetch(`${API_BASE}/clinics`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeader() },
+      body: JSON.stringify({ name: newClinicName.trim() }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setError(body.error || "Ошибка");
+      return;
+    }
+    setNewClinicName("");
+    load();
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", gap: 8 }}>
+        <input value={newClinicName} onChange={(e) => setNewClinicName(e.target.value)} placeholder="Название новой клиники" style={{ ...inputStyle, flex: 1 }} />
+        <button onClick={addClinic} style={{ height: 36, padding: "0 14px", borderRadius: 8, border: "0.5px solid #c9c7bd", background: "transparent", cursor: "pointer" }}>Добавить</button>
+      </div>
+      {error && <span style={{ fontSize: 13, color: "#a32d2d" }}>{error}</span>}
+      {clinics.map((c) => (
+        <div key={c.id} style={{ border: "0.5px solid #e3e1d9", borderRadius: 10, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ fontWeight: 500, fontSize: 14 }}>{c.name}</span>
+          <span style={{ fontSize: 12, color: "#767468" }}>врачей: {c.doctorCount} · заказов: {c.orderCount}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function DentalLabTracker() {
   const [session, setSession] = useState(() => {
     const saved = localStorage.getItem("kiln-lab-session");
     return saved ? JSON.parse(saved) : null;
   });
   const [orders, setOrders] = useState([]);
+  const [doctors, setDoctors] = useState([]);
   const [showForm, setShowForm] = useState(false);
+  const [view, setView] = useState("orders"); // "orders" | "clinics"
   const [loadError, setLoadError] = useState("");
 
   const authHeader = useCallback(() => ({ Authorization: `Bearer ${session?.token}` }), [session]);
@@ -284,12 +413,21 @@ export default function DentalLabTracker() {
     }
   }, [session, authHeader]);
 
+  const loadDoctors = useCallback(async () => {
+    if (!session) return;
+    try {
+      const res = await fetch(`${API_BASE}/doctors`, { headers: authHeader() });
+      if (res.ok) setDoctors(await res.json());
+    } catch (err) {}
+  }, [session, authHeader]);
+
   useEffect(() => {
     if (!session) return;
     loadOrders();
+    loadDoctors();
     const interval = setInterval(loadOrders, 5000);
     return () => clearInterval(interval);
-  }, [session, loadOrders]);
+  }, [session, loadOrders, loadDoctors]);
 
   const handleLogin = (data) => {
     setSession(data);
@@ -314,6 +452,20 @@ export default function DentalLabTracker() {
       body: JSON.stringify({ taskType, ...data }),
     });
     if (res.ok) loadOrders();
+  };
+
+  const addDoctor = async (name) => {
+    const res = await fetch(`${API_BASE}/doctors`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeader() },
+      body: JSON.stringify({ name }),
+    });
+    if (res.ok) {
+      const created = await res.json();
+      loadDoctors();
+      return created;
+    }
+    return null;
   };
 
   const createOrder = async (data) => {
@@ -342,19 +494,32 @@ export default function DentalLabTracker() {
           <span style={{ fontSize: 12, color: "#767468", marginLeft: 8 }}>{session.role === "lab" ? "Лаборатория" : "Клиника"}</span>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          {session.role === "clinic" && !showForm && (
+          {session.role === "clinic" && view === "orders" && !showForm && (
             <button onClick={() => setShowForm(true)} style={{ fontSize: 13, padding: "6px 12px", borderRadius: 8, border: "0.5px solid #c9c7bd", background: "transparent", cursor: "pointer" }}>+ Новый заказ</button>
           )}
           <button onClick={handleLogout} style={{ fontSize: 13, padding: "6px 12px", borderRadius: 8, border: "0.5px solid #c9c7bd", background: "transparent", cursor: "pointer" }}>Выйти</button>
         </div>
       </div>
 
-      {loadError && <span style={{ fontSize: 13, color: "#a32d2d" }}>{loadError}</span>}
-      {showForm && <NewOrderForm onCreate={createOrder} onCancel={() => setShowForm(false)} />}
+      {session.role === "lab" && (
+        <div style={{ display: "flex", gap: 4, background: "#efede4", borderRadius: 999, padding: 3 }}>
+          <button onClick={() => setView("orders")} style={{ flex: 1, fontSize: 13, padding: "8px 0", borderRadius: 999, border: "none", cursor: "pointer", background: view === "orders" ? "#fff" : "transparent", fontWeight: view === "orders" ? 500 : 400 }}>Заказы</button>
+          <button onClick={() => setView("clinics")} style={{ flex: 1, fontSize: 13, padding: "8px 0", borderRadius: 999, border: "none", cursor: "pointer", background: view === "clinics" ? "#fff" : "transparent", fontWeight: view === "clinics" ? 500 : 400 }}>Клиники</button>
+        </div>
+      )}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {orders.map((o) => <OrderCard key={o.id} order={o} role={session.role} onAdvance={advance} onAssign={assign} />)}
-      </div>
+      {loadError && <span style={{ fontSize: 13, color: "#a32d2d" }}>{loadError}</span>}
+
+      {view === "clinics" ? (
+        <ClinicsPanel authHeader={authHeader} />
+      ) : (
+        <>
+          {showForm && <NewOrderForm doctors={doctors} onAddDoctor={addDoctor} onCreate={createOrder} onCancel={() => setShowForm(false)} />}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {orders.map((o) => <OrderCard key={o.id} order={o} role={session.role} onAdvance={advance} onAssign={assign} />)}
+          </div>
+        </>
+      )}
     </div>
   );
 }

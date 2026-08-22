@@ -12,13 +12,18 @@ const STAGE_COLORS = {
 };
 const STAGES = ["Принят", "Модель", "Каркас", "Облицовка", "Готово", "Отправлено"];
 const WORK_TYPES = ["Коронка, цирконий", "Виниры", "Съёмный протез", "Каркас", "Капа"];
-const SHADES = ["A1", "A2", "A3", "B1", "B2", "C2"];
+const QUICK_SHADES = ["A1", "A2", "A3", "B1", "B2", "C2"];
+
+const inputStyle = { width: "100%", height: 36, borderRadius: 8, border: "0.5px solid #c9c7bd", padding: "0 10px", boxSizing: "border-box" };
+const labelStyle = { fontSize: 12, color: "#767468", display: "block", marginBottom: 4 };
 
 function formatDue(dateStr) {
+  if (!dateStr) return "—";
   return new Date(dateStr).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
 }
 
-function LoginScreen({ onLogin }) {
+function AuthScreen({ onLogin }) {
+  const [mode, setMode] = useState("login"); // "login" | "register"
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -33,13 +38,17 @@ function LoginScreen({ onLogin }) {
     setError("");
     setSubmitting(true);
     try {
-      const res = await fetch(`${API_BASE}/auth/login`, {
+      const endpoint = mode === "login" ? "/auth/login" : "/auth/register";
+      const payload = mode === "login"
+        ? { name: name.trim(), password }
+        : { clinicName: name.trim(), password };
+      const res = await fetch(`${API_BASE}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), password }),
+        body: JSON.stringify(payload),
       });
       const body = await res.json();
-      if (!res.ok) throw new Error(body.error || "Ошибка входа");
+      if (!res.ok) throw new Error(body.error || "Ошибка");
       onLogin(body);
     } catch (err) {
       setError(err.message);
@@ -50,29 +59,65 @@ function LoginScreen({ onLogin }) {
 
   return (
     <div style={{ maxWidth: 360, margin: "60px auto", fontFamily: "system-ui, sans-serif", padding: 16 }}>
-      <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 16, textAlign: "center" }}>Вход</h2>
+      <div style={{ display: "flex", gap: 4, background: "#efede4", borderRadius: 999, padding: 3, marginBottom: 20 }}>
+        <button onClick={() => setMode("login")} style={{ flex: 1, fontSize: 13, padding: "8px 0", borderRadius: 999, border: "none", cursor: "pointer", background: mode === "login" ? "#fff" : "transparent", fontWeight: mode === "login" ? 500 : 400 }}>Вход</button>
+        <button onClick={() => setMode("register")} style={{ flex: 1, fontSize: 13, padding: "8px 0", borderRadius: 999, border: "none", cursor: "pointer", background: mode === "register" ? "#fff" : "transparent", fontWeight: mode === "register" ? 500 : 400 }}>Регистрация клиники</button>
+      </div>
       <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <div>
-          <label style={{ fontSize: 12, color: "#767468", display: "block", marginBottom: 4 }}>Имя (Лаборатория или название клиники)</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Например: Дентал+" style={{ width: "100%", height: 40, borderRadius: 8, border: "0.5px solid #c9c7bd", padding: "0 10px" }} />
+          <label style={labelStyle}>{mode === "login" ? "Имя (Лаборатория или название клиники)" : "Название клиники"}</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Например: Дентал+" style={inputStyle} />
         </div>
         <div>
-          <label style={{ fontSize: 12, color: "#767468", display: "block", marginBottom: 4 }}>Пароль</label>
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} style={{ width: "100%", height: 40, borderRadius: 8, border: "0.5px solid #c9c7bd", padding: "0 10px" }} />
+          <label style={labelStyle}>Пароль</label>
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} style={inputStyle} />
         </div>
         {error && <span style={{ fontSize: 13, color: "#a32d2d" }}>{error}</span>}
         <button type="submit" disabled={submitting} style={{ height: 42, borderRadius: 8, border: "none", background: "#1a1a18", color: "#fff", fontWeight: 500, cursor: "pointer" }}>
-          {submitting ? "Входим…" : "Войти"}
+          {submitting ? "Подождите…" : mode === "login" ? "Войти" : "Создать аккаунт клиники"}
         </button>
       </form>
     </div>
   );
 }
 
-function OrderCard({ order, role, onAdvance }) {
+function AssignRow({ label, task, taskType, orderId, onAssign }) {
+  const [technician, setTechnician] = useState(task.technician || "");
+  const [quantity, setQuantity] = useState(task.quantity || "");
+  const [dueDate, setDueDate] = useState(task.dueDate || "");
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await onAssign(orderId, taskType, { technician: technician.trim(), quantity: quantity ? Number(quantity) : null, dueDate: dueDate || null });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ border: "0.5px solid #e3e1d9", borderRadius: 8, padding: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+      <span style={{ fontSize: 12, fontWeight: 500, color: "#767468" }}>{label}</span>
+      <div style={{ display: "flex", gap: 6 }}>
+        <input value={technician} onChange={(e) => setTechnician(e.target.value)} placeholder="Техник" style={{ ...inputStyle, height: 32, flex: 2 }} />
+        <input value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="Кол-во" type="number" min="0" style={{ ...inputStyle, height: 32, flex: 1 }} />
+      </div>
+      <div style={{ display: "flex", gap: 6 }}>
+        <input value={dueDate} onChange={(e) => setDueDate(e.target.value)} type="date" style={{ ...inputStyle, height: 32, flex: 1 }} />
+        <button onClick={save} disabled={saving} style={{ height: 32, padding: "0 10px", borderRadius: 8, border: "0.5px solid #c9c7bd", background: "transparent", fontSize: 12, cursor: "pointer" }}>
+          {saving ? "…" : "Сохранить"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function OrderCard({ order, role, onAdvance, onAssign }) {
   const colors = STAGE_COLORS[order.stage];
   const progressPct = Math.round(((order.stageIndex + 1) / STAGES.length) * 100);
   const canAdvance = role === "lab" && order.stageIndex < STAGES.length - 1;
+  const [showAssign, setShowAssign] = useState(false);
 
   return (
     <div style={{ border: "0.5px solid #e3e1d9", borderRadius: 12, padding: "14px 16px", background: "#fff", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -80,17 +125,49 @@ function OrderCard({ order, role, onAdvance }) {
         <span style={{ fontWeight: 500, fontSize: 15 }}>{order.patient}</span>
         <span style={{ fontSize: 12, color: "#767468" }}>до {formatDue(order.dueDate)}</span>
       </div>
-      <p style={{ fontSize: 13, color: "#767468", margin: 0 }}>{order.clinic} · {order.workType} · {order.shade || "—"}</p>
+      <p style={{ fontSize: 13, color: "#767468", margin: 0 }}>
+        {order.clinic} · {order.workType} · оттенок {order.shade || "—"}
+      </p>
+      {(order.doctor || order.toothCount || order.toothPositions) && (
+        <p style={{ fontSize: 12, color: "#9a988c", margin: 0 }}>
+          {order.doctor && `Врач: ${order.doctor}`}
+          {order.toothCount ? ` · Зубов: ${order.toothCount}` : ""}
+          {order.toothPositions ? ` · Положение: ${order.toothPositions}` : ""}
+        </p>
+      )}
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontSize: 12, padding: "3px 10px", borderRadius: 999, background: colors.bg, color: colors.text, fontWeight: 500 }}>{order.stage}</span>
         <div style={{ flex: 1, height: 4, background: "#efede4", borderRadius: 999, overflow: "hidden" }}>
           <div style={{ width: `${progressPct}%`, height: "100%", background: colors.text, opacity: 0.6 }} />
         </div>
       </div>
-      {canAdvance && (
-        <button onClick={() => onAdvance(order.id)} style={{ alignSelf: "flex-start", fontSize: 13, padding: "6px 12px", borderRadius: 8, border: "0.5px solid #c9c7bd", background: "transparent", cursor: "pointer" }}>
-          Следующий этап: {STAGES[order.stageIndex + 1]}
-        </button>
+
+      {(order.modeling.technician || order.ceramist.technician) && (
+        <p style={{ fontSize: 12, color: "#767468", margin: 0 }}>
+          {order.modeling.technician && `Моделировка: ${order.modeling.technician} (${order.modeling.quantity ?? "—"}) до ${formatDue(order.modeling.dueDate)}`}
+          {order.modeling.technician && order.ceramist.technician ? " · " : ""}
+          {order.ceramist.technician && `Керамист: ${order.ceramist.technician} (${order.ceramist.quantity ?? "—"}) до ${formatDue(order.ceramist.dueDate)}`}
+        </p>
+      )}
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {canAdvance && (
+          <button onClick={() => onAdvance(order.id)} style={{ fontSize: 13, padding: "6px 12px", borderRadius: 8, border: "0.5px solid #c9c7bd", background: "transparent", cursor: "pointer" }}>
+            Следующий этап: {STAGES[order.stageIndex + 1]}
+          </button>
+        )}
+        {role === "lab" && (
+          <button onClick={() => setShowAssign((v) => !v)} style={{ fontSize: 13, padding: "6px 12px", borderRadius: 8, border: "0.5px solid #c9c7bd", background: "transparent", cursor: "pointer" }}>
+            {showAssign ? "Скрыть назначение" : "Назначить исполнителей"}
+          </button>
+        )}
+      </div>
+
+      {showAssign && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <AssignRow label="Моделировка" task={order.modeling} taskType="modeling" orderId={order.id} onAssign={onAssign} />
+          <AssignRow label="Керамист" task={order.ceramist} taskType="ceramist" orderId={order.id} onAssign={onAssign} />
+        </div>
       )}
     </div>
   );
@@ -98,8 +175,11 @@ function OrderCard({ order, role, onAdvance }) {
 
 function NewOrderForm({ onCreate, onCancel }) {
   const [patient, setPatient] = useState("");
+  const [doctor, setDoctor] = useState("");
+  const [toothCount, setToothCount] = useState("");
+  const [toothPositions, setToothPositions] = useState("");
   const [workType, setWorkType] = useState(WORK_TYPES[0]);
-  const [shade, setShade] = useState(SHADES[0]);
+  const [shade, setShade] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -110,7 +190,15 @@ function NewOrderForm({ onCreate, onCancel }) {
     setError("");
     setSubmitting(true);
     try {
-      await onCreate({ patient: patient.trim(), workType, shade, dueDate });
+      await onCreate({
+        patient: patient.trim(),
+        doctor: doctor.trim(),
+        toothCount: toothCount ? Number(toothCount) : null,
+        toothPositions: toothPositions.trim(),
+        workType,
+        shade: shade.trim(),
+        dueDate,
+      });
     } catch (err) {
       setError(err.message || "Не удалось создать заказ");
     } finally {
@@ -121,26 +209,41 @@ function NewOrderForm({ onCreate, onCancel }) {
   return (
     <div style={{ border: "0.5px solid #e3e1d9", borderRadius: 12, padding: 16, background: "#fff", display: "flex", flexDirection: "column", gap: 12 }}>
       <div>
-        <label style={{ fontSize: 12, color: "#767468", display: "block", marginBottom: 4 }}>Пациент</label>
-        <input value={patient} onChange={(e) => setPatient(e.target.value)} placeholder="Фамилия и инициалы" style={{ width: "100%", height: 36, borderRadius: 8, border: "0.5px solid #c9c7bd", padding: "0 10px" }} />
+        <label style={labelStyle}>Пациент</label>
+        <input value={patient} onChange={(e) => setPatient(e.target.value)} placeholder="Фамилия и инициалы" style={inputStyle} />
       </div>
       <div>
-        <label style={{ fontSize: 12, color: "#767468", display: "block", marginBottom: 4 }}>Тип работы</label>
-        <select value={workType} onChange={(e) => setWorkType(e.target.value)} style={{ width: "100%", height: 36, borderRadius: 8, border: "0.5px solid #c9c7bd" }}>
+        <label style={labelStyle}>Врач</label>
+        <input value={doctor} onChange={(e) => setDoctor(e.target.value)} placeholder="Имя врача" style={inputStyle} />
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ flex: 1 }}>
+          <label style={labelStyle}>Количество зубов</label>
+          <input value={toothCount} onChange={(e) => setToothCount(e.target.value)} type="number" min="0" style={inputStyle} />
+        </div>
+        <div style={{ flex: 2 }}>
+          <label style={labelStyle}>Положение (номера зубов)</label>
+          <input value={toothPositions} onChange={(e) => setToothPositions(e.target.value)} placeholder="Например: 11, 12, 21" style={inputStyle} />
+        </div>
+      </div>
+      <div>
+        <label style={labelStyle}>Тип работы</label>
+        <select value={workType} onChange={(e) => setWorkType(e.target.value)} style={inputStyle}>
           {WORK_TYPES.map((w) => <option key={w} value={w}>{w}</option>)}
         </select>
       </div>
       <div>
-        <label style={{ fontSize: 12, color: "#767468", display: "block", marginBottom: 6 }}>Цвет по Vita</label>
+        <label style={labelStyle}>Цвет по Vita (можно точный, например 3.5)</label>
+        <input value={shade} onChange={(e) => setShade(e.target.value)} placeholder="Например: A2 или 3.5" style={{ ...inputStyle, marginBottom: 6 }} />
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {SHADES.map((s) => (
+          {QUICK_SHADES.map((s) => (
             <span key={s} onClick={() => setShade(s)} style={{ fontSize: 12, padding: "5px 12px", borderRadius: 999, cursor: "pointer", border: shade === s ? "0.5px solid #185fa5" : "0.5px solid #c9c7bd", background: shade === s ? "#e6f1fb" : "transparent", color: shade === s ? "#0c447c" : "#767468" }}>{s}</span>
           ))}
         </div>
       </div>
       <div>
-        <label style={{ fontSize: 12, color: "#767468", display: "block", marginBottom: 4 }}>Срок сдачи</label>
-        <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} style={{ width: "100%", height: 36, borderRadius: 8, border: "0.5px solid #c9c7bd", padding: "0 10px" }} />
+        <label style={labelStyle}>Срок сдачи</label>
+        <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} style={inputStyle} />
       </div>
       {error && <span style={{ fontSize: 13, color: "#a32d2d" }}>{error}</span>}
       <div style={{ display: "flex", gap: 8 }}>
@@ -204,6 +307,15 @@ export default function DentalLabTracker() {
     if (res.ok) loadOrders();
   };
 
+  const assign = async (orderId, taskType, data) => {
+    const res = await fetch(`${API_BASE}/orders/${orderId}/assign`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...authHeader() },
+      body: JSON.stringify({ taskType, ...data }),
+    });
+    if (res.ok) loadOrders();
+  };
+
   const createOrder = async (data) => {
     const res = await fetch(`${API_BASE}/orders`, {
       method: "POST",
@@ -219,7 +331,7 @@ export default function DentalLabTracker() {
   };
 
   if (!session) {
-    return <LoginScreen onLogin={handleLogin} />;
+    return <AuthScreen onLogin={handleLogin} />;
   }
 
   return (
@@ -241,7 +353,7 @@ export default function DentalLabTracker() {
       {showForm && <NewOrderForm onCreate={createOrder} onCancel={() => setShowForm(false)} />}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {orders.map((o) => <OrderCard key={o.id} order={o} role={session.role} onAdvance={advance} />)}
+        {orders.map((o) => <OrderCard key={o.id} order={o} role={session.role} onAdvance={advance} onAssign={assign} />)}
       </div>
     </div>
   );

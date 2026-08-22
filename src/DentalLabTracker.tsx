@@ -10,10 +10,9 @@ const STAGE_COLORS = {
   "Готово": { bg: "#EAF3DE", text: "#27500A" },
   "Отправлено": { bg: "#EAF3DE", text: "#27500A" },
 };
-const STAGES = ["Принят", "Модель", "Каркас", "Облицовка", "Готово", "Отправлено"];
-const WORK_TYPES = ["Коронка, цирконий", "Виниры", "Съёмный протез", "Каркас", "Капа"];
+const STAGES = ["Принят", "Моделировка", "Покараска/нанесение", "Облицовка", "Готово", "Отправлено"];
+const WORK_TYPES = ["Коронка, цирконий", "Коронка Emax", "Виниры Emax", "Каркас", "Капа"];
 const SHADES = ["A1", "A2", "A3", "B1", "B2", "C2"];
-
 function formatDue(dateStr) {
   return new Date(dateStr).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
 }

@@ -11,7 +11,7 @@ const STAGE_COLORS = {
   "Отправлено": { bg: "#EAF3DE", text: "#27500A" },
 };
 const STAGES = ["Принят", "Модель", "Каркас", "Облицовка", "Готово", "Отправлено"];
-const WORK_TYPES = ["Коронка, цирконий", "Виниры", "Съёмный протез", "Каркас", "Капа"];
+const WORK_TYPES = ["Коронка, цирконий", "Винир Emax", "Коронка Emax", "Каркас", "Каппа"];
 const SHADES = ["A1", "A2", "A3", "B1", "B2", "C2"];
 
 function formatDue(dateStr) {

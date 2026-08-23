@@ -14,7 +14,7 @@ const STAGES = ["Принят", "Модель", "Каркас", "Облицов�
 const WORK_TYPES = ["Коронка, цирконий", "Виниры", "Съёмный протез", "Каркас", "Капа"];
 const QUICK_SHADES = ["A1", "A2", "A3", "B1", "B2", "C2"];
 const TASK_TYPES = ["modeling", "ceramist", "cadcam"];
-const TASK_LABELS = { modeling: "Моделировка", ceramist: "Керамист", cadcam: "Cad/Cam моделирование" };
+const TASK_LABELS = { modeling: "техник", ceramist: "Керамист", cadcam: "Cad/Cam моделирование" };
 const TASK_STATUS_LABEL = { pending: "Не начато", in_progress: "В работе", done: "Готово" };
 
 const UPPER_RIGHT = [18, 17, 16, 15, 14, 13, 12, 11];

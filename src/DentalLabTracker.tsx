@@ -13,6 +13,9 @@ const STAGE_COLORS = {
 const STAGES = ["Принят", "Модель", "Каркас", "Облицовка", "Готово", "Отправлено"];
 const WORK_TYPES = ["Коронка, цирконий", "Виниры", "Съёмный протез", "Каркас", "Капа"];
 const QUICK_SHADES = ["A1", "A2", "A3", "B1", "B2", "C2"];
+const TASK_TYPES = ["modeling", "ceramist", "cadcam"];
+const TASK_LABELS = { modeling: "Моделировка", ceramist: "Керамист", cadcam: "Cad/Cam моделирование" };
+const TASK_STATUS_LABEL = { pending: "Не начато", in_progress: "В работе", done: "Готово" };
 
 const UPPER_RIGHT = [18, 17, 16, 15, 14, 13, 12, 11];
 const UPPER_LEFT = [21, 22, 23, 24, 25, 26, 27, 28];
@@ -21,7 +24,6 @@ const LOWER_RIGHT = [48, 47, 46, 45, 44, 43, 42, 41];
 
 const inputStyle = { width: "100%", height: 36, borderRadius: 8, border: "0.5px solid #c9c7bd", padding: "0 10px", boxSizing: "border-box" };
 const labelStyle = { fontSize: 12, color: "#767468", display: "block", marginBottom: 4 };
-const TASK_STATUS_LABEL = { pending: "Не начато", in_progress: "В работе", done: "Готово" };
 
 function formatDue(dateStr) {
   if (!dateStr) return "—";
@@ -118,12 +120,18 @@ function AuthScreen({ onLogin }) {
   );
 }
 
-function AssignRow({ label, task, taskType, orderId, technicians, onAssign }) {
+function AssignRow({ label, task, taskType, orderId, technicians, priceList, workType, onAssign }) {
   const [technicianId, setTechnicianId] = useState(task.technicianId || "");
   const [quantity, setQuantity] = useState(task.quantity || "");
   const [dueDate, setDueDate] = useState(task.dueDate || "");
   const [price, setPrice] = useState(task.price || "");
   const [saving, setSaving] = useState(false);
+
+  const suggested = priceList.find((p) => p.workType === workType && p.taskType === taskType);
+
+  const useSuggested = () => {
+    if (suggested) setPrice(String(suggested.price));
+  };
 
   const save = async () => {
     setSaving(true);
@@ -152,6 +160,9 @@ function AssignRow({ label, task, taskType, orderId, technicians, onAssign }) {
         <input value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="Кол-во" type="number" min="0" style={{ ...inputStyle, height: 32, flex: 1 }} />
         <input value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Сумма ₽" type="number" min="0" style={{ ...inputStyle, height: 32, flex: 1 }} />
       </div>
+      {suggested && String(suggested.price) !== price && (
+        <span onClick={useSuggested} style={{ fontSize: 11, color: "#185fa5", cursor: "pointer" }}>Из прайса: {suggested.price} ₽ — применить</span>
+      )}
       <div style={{ display: "flex", gap: 6 }}>
         <input value={dueDate} onChange={(e) => setDueDate(e.target.value)} type="date" style={{ ...inputStyle, height: 32, flex: 1 }} />
         <button onClick={save} disabled={saving} style={{ height: 32, padding: "0 10px", borderRadius: 8, border: "0.5px solid #c9c7bd", background: "transparent", fontSize: 12, cursor: "pointer" }}>
@@ -162,12 +173,13 @@ function AssignRow({ label, task, taskType, orderId, technicians, onAssign }) {
   );
 }
 
-function OrderCard({ order, role, technicians, onAdvance, onAssign }) {
+function OrderCard({ order, role, technicians, priceList, onAdvance, onAssign }) {
   const colors = STAGE_COLORS[order.stage];
   const progressPct = Math.round(((order.stageIndex + 1) / STAGES.length) * 100);
   const canAdvance = role === "lab" && order.stageIndex < STAGES.length - 1;
   const [showAssign, setShowAssign] = useState(false);
   const fittingDates = (order.fittingDates || []).filter(Boolean);
+  const assignedTasks = TASK_TYPES.filter((t) => order[t].technicianName);
 
   return (
     <div style={{ border: "0.5px solid #e3e1d9", borderRadius: 12, padding: "14px 16px", background: "#fff", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -198,11 +210,9 @@ function OrderCard({ order, role, technicians, onAdvance, onAssign }) {
         </div>
       </div>
 
-      {(order.modeling.technicianName || order.ceramist.technicianName) && (
+      {assignedTasks.length > 0 && (
         <p style={{ fontSize: 12, color: "#767468", margin: 0 }}>
-          {order.modeling.technicianName && `Моделировка: ${order.modeling.technicianName} (${order.modeling.quantity ?? "—"}) до ${formatDue(order.modeling.dueDate)} · ${TASK_STATUS_LABEL[order.modeling.status] || ""}`}
-          {order.modeling.technicianName && order.ceramist.technicianName ? " · " : ""}
-          {order.ceramist.technicianName && `Керамист: ${order.ceramist.technicianName} (${order.ceramist.quantity ?? "—"}) до ${formatDue(order.ceramist.dueDate)} · ${TASK_STATUS_LABEL[order.ceramist.status] || ""}`}
+          {assignedTasks.map((t) => `${TASK_LABELS[t]}: ${order[t].technicianName} (${order[t].quantity ?? "—"}) до ${formatDue(order[t].dueDate)} · ${TASK_STATUS_LABEL[order[t].status] || ""}`).join(" · ")}
         </p>
       )}
 
@@ -221,8 +231,9 @@ function OrderCard({ order, role, technicians, onAdvance, onAssign }) {
 
       {showAssign && (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <AssignRow label="Моделировка" task={order.modeling} taskType="modeling" orderId={order.id} technicians={technicians} onAssign={onAssign} />
-          <AssignRow label="Керамист" task={order.ceramist} taskType="ceramist" orderId={order.id} technicians={technicians} onAssign={onAssign} />
+          {TASK_TYPES.map((t) => (
+            <AssignRow key={t} label={TASK_LABELS[t]} task={order[t]} taskType={t} orderId={order.id} technicians={technicians} priceList={priceList} workType={order.workType} onAssign={onAssign} />
+          ))}
         </div>
       )}
     </div>
@@ -396,10 +407,11 @@ function ClinicsPanel({ authHeader }) {
   );
 }
 
-function TechniciansPanel({ technicians, onAdd }) {
+function TechniciansPanel({ technicians, onAdd, onDelete }) {
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   const add = async () => {
     if (!name.trim() || !password) return setError("Заполните оба поля");
@@ -422,8 +434,78 @@ function TechniciansPanel({ technicians, onAdd }) {
       </div>
       {error && <span style={{ fontSize: 13, color: "#a32d2d" }}>{error}</span>}
       {technicians.map((t) => (
-        <div key={t.id} style={{ border: "0.5px solid #e3e1d9", borderRadius: 10, padding: "10px 14px" }}>
+        <div key={t.id} style={{ border: "0.5px solid #e3e1d9", borderRadius: 10, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ fontWeight: 500, fontSize: 14 }}>{t.name}</span>
+          {confirmDeleteId === t.id ? (
+            <div style={{ display: "flex", gap: 6 }}>
+              <button onClick={() => { onDelete(t.id); setConfirmDeleteId(null); }} style={{ fontSize: 12, padding: "4px 10px", borderRadius: 8, border: "0.5px solid #a32d2d", color: "#a32d2d", background: "transparent", cursor: "pointer" }}>Удалить</button>
+              <button onClick={() => setConfirmDeleteId(null)} style={{ fontSize: 12, padding: "4px 10px", borderRadius: 8, border: "0.5px solid #c9c7bd", background: "transparent", cursor: "pointer" }}>Отмена</button>
+            </div>
+          ) : (
+            <button onClick={() => setConfirmDeleteId(t.id)} style={{ fontSize: 12, padding: "4px 10px", borderRadius: 8, border: "0.5px solid #c9c7bd", background: "transparent", cursor: "pointer", color: "#767468" }}>Удалить</button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PriceListPanel({ priceList, onSave }) {
+  const [values, setValues] = useState({});
+
+  const key = (w, t) => `${w}__${t}`;
+
+  const getValue = (w, t) => {
+    if (values[key(w, t)] !== undefined) return values[key(w, t)];
+    const found = priceList.find((p) => p.workType === w && p.taskType === t);
+    return found ? String(found.price) : "";
+  };
+
+  const setValue = (w, t, v) => setValues((prev) => ({ ...prev, [key(w, t)]: v }));
+
+  const save = (w, t) => {
+    const v = getValue(w, t);
+    if (v === "") return;
+    onSave(w, t, Number(v));
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <p style={{ fontSize: 12, color: "#767468", margin: 0 }}>Цены по умолчанию для каждого типа работы. При назначении исполнителя можно применить эту цену одним нажатием.</p>
+      {WORK_TYPES.map((w) => (
+        <div key={w} style={{ border: "0.5px solid #e3e1d9", borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+          <span style={{ fontWeight: 500, fontSize: 13 }}>{w}</span>
+          {TASK_TYPES.map((t) => (
+            <div key={t} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <span style={{ fontSize: 12, color: "#767468", flex: 1 }}>{TASK_LABELS[t]}</span>
+              <input value={getValue(w, t)} onChange={(e) => setValue(w, t, e.target.value)} type="number" min="0" placeholder="₽" style={{ ...inputStyle, height: 30, width: 90 }} />
+              <button onClick={() => save(w, t)} style={{ height: 30, padding: "0 10px", borderRadius: 8, border: "0.5px solid #c9c7bd", background: "transparent", fontSize: 12, cursor: "pointer" }}>OK</button>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function StatsPanel({ authHeader }) {
+  const [stats, setStats] = useState([]);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/stats/overview`, { headers: authHeader() })
+      .then((res) => res.ok ? res.json() : [])
+      .then(setStats);
+  }, [authHeader]);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {stats.length === 0 && <p style={{ fontSize: 13, color: "#767468" }}>Пока нет техников или выполненных работ.</p>}
+      {stats.map((s) => (
+        <div key={s.id} style={{ border: "0.5px solid #e3e1d9", borderRadius: 10, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
+          <span style={{ fontWeight: 500, fontSize: 14 }}>{s.name}</span>
+          <span style={{ fontSize: 12, color: "#767468" }}>Сегодня: {s.completedToday} шт · {s.earnedToday} ₽</span>
+          <span style={{ fontSize: 12, color: "#767468" }}>Всего: {s.completedTotal} шт · {s.earnedTotal} ₽</span>
+          <span style={{ fontSize: 12, color: "#767468" }}>В работе сейчас: {s.inProgress}</span>
         </div>
       ))}
     </div>
@@ -453,8 +535,6 @@ function TechnicianView({ authHeader, onLogout, name }) {
     const res = await fetch(`${API_BASE}/tasks/${orderId}/${taskType}/${action}`, { method: "PATCH", headers: authHeader() });
     if (res.ok) load();
   };
-
-  const taskTypeLabel = { modeling: "Моделировка", ceramist: "Керамист" };
 
   return (
     <div style={{ maxWidth: 480, margin: "0 auto", fontFamily: "system-ui, sans-serif", padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
@@ -489,7 +569,7 @@ function TechnicianView({ authHeader, onLogout, name }) {
               <span style={{ fontWeight: 500, fontSize: 15 }}>{t.patient}</span>
               <span style={{ fontSize: 12, color: "#767468" }}>до {formatDue(t.dueDate)}</span>
             </div>
-            <p style={{ fontSize: 13, color: "#767468", margin: 0 }}>{t.clinic} · {t.workType} · {taskTypeLabel[t.taskType]}</p>
+            <p style={{ fontSize: 13, color: "#767468", margin: 0 }}>{t.clinic} · {t.workType} · {TASK_LABELS[t.taskType]}</p>
             <p style={{ fontSize: 12, color: "#9a988c", margin: 0 }}>Кол-во: {t.quantity ?? "—"} · Сумма: {t.price ?? "—"} ₽</p>
             <div style={{ display: "flex", gap: 8 }}>
               {t.status === "pending" && (
@@ -517,6 +597,7 @@ export default function DentalLabTracker() {
   const [orders, setOrders] = useState([]);
   const [doctors, setDoctors] = useState([]);
   const [technicians, setTechnicians] = useState([]);
+  const [priceList, setPriceList] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [view, setView] = useState("orders");
   const [loadError, setLoadError] = useState("");
@@ -556,14 +637,23 @@ export default function DentalLabTracker() {
     } catch (err) {}
   }, [session, authHeader]);
 
+  const loadPriceList = useCallback(async () => {
+    if (!session) return;
+    try {
+      const res = await fetch(`${API_BASE}/price-list`, { headers: authHeader() });
+      if (res.ok) setPriceList(await res.json());
+    } catch (err) {}
+  }, [session, authHeader]);
+
   useEffect(() => {
     if (!session || session.role === "technician") return;
     loadOrders();
     loadDoctors();
+    loadPriceList();
     if (session.role === "lab") loadTechnicians();
     const interval = setInterval(loadOrders, 5000);
     return () => clearInterval(interval);
-  }, [session, loadOrders, loadDoctors, loadTechnicians]);
+  }, [session, loadOrders, loadDoctors, loadTechnicians, loadPriceList]);
 
   const handleLogin = (data) => {
     setSession(data);
@@ -617,6 +707,23 @@ export default function DentalLabTracker() {
     loadTechnicians();
   };
 
+  const deleteTechnician = async (id) => {
+    const res = await fetch(`${API_BASE}/technicians/${id}`, { method: "DELETE", headers: authHeader() });
+    if (res.ok) {
+      loadTechnicians();
+      loadOrders();
+    }
+  };
+
+  const savePrice = async (workType, taskType, price) => {
+    const res = await fetch(`${API_BASE}/price-list`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeader() },
+      body: JSON.stringify({ workType, taskType, price }),
+    });
+    if (res.ok) loadPriceList();
+  };
+
   const createOrder = async (data) => {
     const res = await fetch(`${API_BASE}/orders`, {
       method: "POST",
@@ -639,6 +746,14 @@ export default function DentalLabTracker() {
     return <TechnicianView authHeader={authHeader} onLogout={handleLogout} name={session.name} />;
   }
 
+  const labTabs = [
+    ["orders", "Заказы"],
+    ["clinics", "Клиники"],
+    ["technicians", "Техники"],
+    ["prices", "Прайс"],
+    ["stats", "Статистика"],
+  ];
+
   return (
     <div style={{ maxWidth: 480, margin: "0 auto", fontFamily: "system-ui, sans-serif", padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -655,22 +770,24 @@ export default function DentalLabTracker() {
       </div>
 
       {session.role === "lab" && (
-        <div style={{ display: "flex", gap: 4, background: "#efede4", borderRadius: 999, padding: 3 }}>
-          <button onClick={() => setView("orders")} style={{ flex: 1, fontSize: 12, padding: "8px 0", borderRadius: 999, border: "none", cursor: "pointer", background: view === "orders" ? "#fff" : "transparent", fontWeight: view === "orders" ? 500 : 400 }}>Заказы</button>
-          <button onClick={() => setView("clinics")} style={{ flex: 1, fontSize: 12, padding: "8px 0", borderRadius: 999, border: "none", cursor: "pointer", background: view === "clinics" ? "#fff" : "transparent", fontWeight: view === "clinics" ? 500 : 400 }}>Клиники</button>
-          <button onClick={() => setView("technicians")} style={{ flex: 1, fontSize: 12, padding: "8px 0", borderRadius: 999, border: "none", cursor: "pointer", background: view === "technicians" ? "#fff" : "transparent", fontWeight: view === "technicians" ? 500 : 400 }}>Техники</button>
+        <div style={{ display: "flex", gap: 4, background: "#efede4", borderRadius: 999, padding: 3, flexWrap: "wrap" }}>
+          {labTabs.map(([key, label]) => (
+            <button key={key} onClick={() => setView(key)} style={{ flex: "1 1 auto", fontSize: 11, padding: "8px 4px", borderRadius: 999, border: "none", cursor: "pointer", background: view === key ? "#fff" : "transparent", fontWeight: view === key ? 500 : 400 }}>{label}</button>
+          ))}
         </div>
       )}
 
       {loadError && <span style={{ fontSize: 13, color: "#a32d2d" }}>{loadError}</span>}
 
       {view === "clinics" && <ClinicsPanel authHeader={authHeader} />}
-      {view === "technicians" && <TechniciansPanel technicians={technicians} onAdd={addTechnician} />}
+      {view === "technicians" && <TechniciansPanel technicians={technicians} onAdd={addTechnician} onDelete={deleteTechnician} />}
+      {view === "prices" && <PriceListPanel priceList={priceList} onSave={savePrice} />}
+      {view === "stats" && <StatsPanel authHeader={authHeader} />}
       {view === "orders" && (
         <>
           {showForm && <NewOrderForm doctors={doctors} onAddDoctor={addDoctor} onCreate={createOrder} onCancel={() => setShowForm(false)} />}
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {orders.map((o) => <OrderCard key={o.id} order={o} role={session.role} technicians={technicians} onAdvance={advance} onAssign={assign} />)}
+            {orders.map((o) => <OrderCard key={o.id} order={o} role={session.role} technicians={technicians} priceList={priceList} onAdvance={advance} onAssign={assign} />)}
           </div>
         </>
       )}

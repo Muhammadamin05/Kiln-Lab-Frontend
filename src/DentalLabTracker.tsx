@@ -16,6 +16,8 @@ const QUICK_SHADES = ["A1", "A2", "A3", "B1", "B2", "C2"];
 const TASK_TYPES = ["modeling", "ceramist", "cadcam"];
 const TASK_LABELS = { modeling: "Моделировка", ceramist: "Керамист", cadcam: "Cad/Cam моделирование" };
 const TASK_STATUS_LABEL = { pending: "Не начато", in_progress: "В работе", done: "Готово" };
+const FREE_CLINIC_LIMIT_LABEL = 2;
+const FREE_TECH_LIMIT_LABEL = 1;
 
 const UPPER_RIGHT = [18, 17, 16, 15, 14, 13, 12, 11];
 const UPPER_LEFT = [21, 22, 23, 24, 25, 26, 27, 28];
@@ -66,20 +68,38 @@ function ToothChart({ selected, onToggle }) {
 }
 
 function AuthScreen({ onLogin }) {
-  const [mode, setMode] = useState("login");
+  const [mode, setMode] = useState("login"); // "login" | "register-clinic" | "register-lab"
   const [name, setName] = useState("");
+  const [labName, setLabName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!name.trim() || !password) return setError("Заполните оба поля");
     setError("");
+
+    if (mode === "login") {
+      if (!name.trim() || !password) return setError("Заполните оба поля");
+    } else if (mode === "register-clinic") {
+      if (!labName.trim() || !name.trim() || !password) return setError("Заполните все поля");
+    } else {
+      if (!name.trim() || !password) return setError("Заполните оба поля");
+    }
+
     setSubmitting(true);
     try {
-      const endpoint = mode === "login" ? "/auth/login" : "/auth/register";
-      const payload = mode === "login" ? { name: name.trim(), password } : { clinicName: name.trim(), password };
+      let endpoint, payload;
+      if (mode === "login") {
+        endpoint = "/auth/login";
+        payload = { name: name.trim(), password };
+      } else if (mode === "register-clinic") {
+        endpoint = "/auth/register";
+        payload = { labName: labName.trim(), clinicName: name.trim(), password };
+      } else {
+        endpoint = "/auth/register-lab";
+        payload = { name: name.trim(), password };
+      }
       const res = await fetch(`${API_BASE}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -97,25 +117,46 @@ function AuthScreen({ onLogin }) {
 
   return (
     <div style={{ maxWidth: 360, margin: "60px auto", fontFamily: "system-ui, sans-serif", padding: 16 }}>
-      <div style={{ display: "flex", gap: 4, background: "#efede4", borderRadius: 999, padding: 3, marginBottom: 20 }}>
-        <button onClick={() => setMode("login")} style={{ flex: 1, fontSize: 13, padding: "8px 0", borderRadius: 999, border: "none", cursor: "pointer", background: mode === "login" ? "#fff" : "transparent", fontWeight: mode === "login" ? 500 : 400 }}>Вход</button>
-        <button onClick={() => setMode("register")} style={{ flex: 1, fontSize: 13, padding: "8px 0", borderRadius: 999, border: "none", cursor: "pointer", background: mode === "register" ? "#fff" : "transparent", fontWeight: mode === "register" ? 500 : 400 }}>Регистрация клиники</button>
+      <div style={{ display: "flex", gap: 4, background: "#efede4", borderRadius: 999, padding: 3, marginBottom: 20, flexWrap: "wrap" }}>
+        <button onClick={() => setMode("login")} style={{ flex: "1 1 auto", fontSize: 12, padding: "8px 4px", borderRadius: 999, border: "none", cursor: "pointer", background: mode === "login" ? "#fff" : "transparent", fontWeight: mode === "login" ? 500 : 400 }}>Вход</button>
+        <button onClick={() => setMode("register-clinic")} style={{ flex: "1 1 auto", fontSize: 12, padding: "8px 4px", borderRadius: 999, border: "none", cursor: "pointer", background: mode === "register-clinic" ? "#fff" : "transparent", fontWeight: mode === "register-clinic" ? 500 : 400 }}>Я клиника</button>
+        <button onClick={() => setMode("register-lab")} style={{ flex: "1 1 auto", fontSize: 12, padding: "8px 4px", borderRadius: 999, border: "none", cursor: "pointer", background: mode === "register-lab" ? "#fff" : "transparent", fontWeight: mode === "register-lab" ? 500 : 400 }}>Я лаборатория</button>
       </div>
       <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <div>
-          <label style={labelStyle}>{mode === "login" ? "Имя (Лаборатория, клиника или техник)" : "Название клиники"}</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Например: Дентал+" style={inputStyle} />
-        </div>
+        {mode === "login" && (
+          <div>
+            <label style={labelStyle}>Имя (лаборатория, клиника или техник)</label>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Например: Дентал+" style={inputStyle} />
+          </div>
+        )}
+        {mode === "register-clinic" && (
+          <>
+            <div>
+              <label style={labelStyle}>Название лаборатории (к которой подключаетесь)</label>
+              <input value={labName} onChange={(e) => setLabName(e.target.value)} placeholder="Точное название лаборатории" style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Название клиники</label>
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Например: Дентал+" style={inputStyle} />
+            </div>
+          </>
+        )}
+        {mode === "register-lab" && (
+          <div>
+            <label style={labelStyle}>Название лаборатории</label>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Название вашей лаборатории" style={inputStyle} />
+          </div>
+        )}
         <div>
           <label style={labelStyle}>Пароль</label>
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} style={inputStyle} />
         </div>
         {error && <span style={{ fontSize: 13, color: "#a32d2d" }}>{error}</span>}
         <button type="submit" disabled={submitting} style={{ height: 42, borderRadius: 8, border: "none", background: "#1a1a18", color: "#fff", fontWeight: 500, cursor: "pointer" }}>
-          {submitting ? "Подождите…" : mode === "login" ? "Войти" : "Создать аккаунт клиники"}
+          {submitting ? "Подождите…" : mode === "login" ? "Войти" : mode === "register-clinic" ? "Создать аккаунт клиники" : "Создать лабораторию (14 дней бесплатно)"}
         </button>
       </form>
-      <p style={{ fontSize: 12, color: "#9a988c", marginTop: 12, textAlign: "center" }}>Аккаунты техников создаёт лаборатория.</p>
+      <p style={{ fontSize: 12, color: "#9a988c", marginTop: 12, textAlign: "center" }}>Аккаунты техников создаёт лаборатория из своего кабинета.</p>
     </div>
   );
 }
@@ -524,6 +565,42 @@ function PriceListPanel({ priceList, onSave }) {
   );
 }
 
+function PlanPanel({ authHeader }) {
+  const [status, setStatus] = useState(null);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/lab/status`, { headers: authHeader() })
+      .then((res) => res.ok ? res.json() : null)
+      .then(setStatus);
+  }, [authHeader]);
+
+  if (!status) return <p style={{ fontSize: 13, color: "#767468" }}>Загрузка…</p>;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ border: "0.5px solid #e3e1d9", borderRadius: 10, padding: "14px 16px" }}>
+        <p style={{ fontSize: 14, fontWeight: 500, margin: "0 0 6px" }}>{status.labName}</p>
+        {status.plan === "paid" ? (
+          <p style={{ fontSize: 13, color: "#27500A", margin: 0 }}>Платный тариф — без ограничений</p>
+        ) : status.trialActive ? (
+          <p style={{ fontSize: 13, color: "#0C447C", margin: 0 }}>Пробный период — осталось {status.daysLeft} дн.</p>
+        ) : (
+          <p style={{ fontSize: 13, color: "#791F1F", margin: 0 }}>Бесплатный тариф — действуют лимиты</p>
+        )}
+        <p style={{ fontSize: 12, color: "#767468", margin: "8px 0 0" }}>
+          Клиник: {status.clinicCount}{status.limits ? ` из ${status.limits.clinics}` : ""} · Техников: {status.techCount}{status.limits ? ` из ${status.limits.technicians}` : ""}
+        </p>
+      </div>
+      {!status.unrestricted && (
+        <div style={{ border: "0.5px solid #e3e1d9", borderRadius: 10, padding: "14px 16px" }}>
+          <p style={{ fontSize: 13, margin: "0 0 6px" }}>На бесплатном тарифе: до {FREE_CLINIC_LIMIT_LABEL} клиник и {FREE_TECH_LIMIT_LABEL} техник(а/ов).</p>
+          <p style={{ fontSize: 12, color: "#767468", margin: 0 }}>Чтобы снять ограничения — свяжитесь с нами для перехода на платный тариф.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StatsPanel({ authHeader }) {
   const [stats, setStats] = useState([]);
 
@@ -832,6 +909,7 @@ export default function DentalLabTracker() {
     ["technicians", "Техники"],
     ["prices", "Прайс"],
     ["stats", "Статистика"],
+    ["plan", "Тариф"],
   ];
 
   return (
@@ -863,6 +941,7 @@ export default function DentalLabTracker() {
       {view === "technicians" && <TechniciansPanel technicians={technicians} onAdd={addTechnician} onDelete={deleteTechnician} />}
       {view === "prices" && <PriceListPanel priceList={priceList} onSave={savePrice} />}
       {view === "stats" && <StatsPanel authHeader={authHeader} />}
+      {view === "plan" && <PlanPanel authHeader={authHeader} />}
       {view === "orders" && (
         <>
           {showForm && <NewOrderForm doctors={doctors} onAddDoctor={addDoctor} onCreate={createOrder} onCancel={() => setShowForm(false)} />}

@@ -14,7 +14,7 @@ const STAGES = ["Принят", "Модель", "Каркас", "Облицов�
 const WORK_TYPES = ["Коронка, цирконий", "Виниры", "Съёмный протез", "Каркас", "Капа"];
 const QUICK_SHADES = ["A1", "A2", "A3", "B1", "B2", "C2"];
 const TASK_TYPES = ["modeling", "ceramist", "cadcam"];
-const TASK_LABELS = { modeling: "техник", ceramist: "Керамист", cadcam: "Cad/Cam моделирование" };
+const TASK_LABELS = { modeling: "Моделировка", ceramist: "Керамист", cadcam: "Cad/Cam моделирование" };
 const TASK_STATUS_LABEL = { pending: "Не начато", in_progress: "В работе", done: "Готово" };
 
 const UPPER_RIGHT = [18, 17, 16, 15, 14, 13, 12, 11];
@@ -173,11 +173,12 @@ function AssignRow({ label, task, taskType, orderId, technicians, priceList, wor
   );
 }
 
-function OrderCard({ order, role, technicians, priceList, onAdvance, onAssign }) {
+function OrderCard({ order, role, technicians, priceList, authHeader, onAdvance, onAssign }) {
   const colors = STAGE_COLORS[order.stage];
   const progressPct = Math.round(((order.stageIndex + 1) / STAGES.length) * 100);
   const canAdvance = role === "lab" && order.stageIndex < STAGES.length - 1;
   const [showAssign, setShowAssign] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const fittingDates = (order.fittingDates || []).filter(Boolean);
   const assignedTasks = TASK_TYPES.filter((t) => order[t].technicianName);
 
@@ -227,6 +228,9 @@ function OrderCard({ order, role, technicians, priceList, onAdvance, onAssign })
             {showAssign ? "Скрыть назначение" : "Назначить исполнителей"}
           </button>
         )}
+        <button onClick={() => setShowHistory((v) => !v)} style={{ fontSize: 13, padding: "6px 12px", borderRadius: 8, border: "0.5px solid #c9c7bd", background: "transparent", cursor: "pointer" }}>
+          {showHistory ? "Скрыть историю" : "История"}
+        </button>
       </div>
 
       {showAssign && (
@@ -236,6 +240,8 @@ function OrderCard({ order, role, technicians, priceList, onAdvance, onAssign })
           ))}
         </div>
       )}
+
+      {showHistory && <OrderHistory orderId={order.id} authHeader={authHeader} />}
     </div>
   );
 }
@@ -407,9 +413,34 @@ function ClinicsPanel({ authHeader }) {
   );
 }
 
+function OrderHistory({ orderId, authHeader }) {
+  const [events, setEvents] = useState(null);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/orders/${orderId}/history`, { headers: authHeader() })
+      .then((res) => res.ok ? res.json() : [])
+      .then(setEvents);
+  }, [orderId, authHeader]);
+
+  if (events === null) return <p style={{ fontSize: 12, color: "#9a988c" }}>Загрузка…</p>;
+  if (events.length === 0) return <p style={{ fontSize: 12, color: "#9a988c" }}>История пуста.</p>;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      {events.map((e, i) => (
+        <div key={i} style={{ fontSize: 12, color: "#767468", display: "flex", justifyContent: "space-between" }}>
+          <span>{e.stage}</span>
+          <span>{new Date(e.changedAt).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function TechniciansPanel({ technicians, onAdd, onDelete }) {
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
+  const [isSenior, setIsSenior] = useState(false);
   const [error, setError] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
@@ -417,9 +448,10 @@ function TechniciansPanel({ technicians, onAdd, onDelete }) {
     if (!name.trim() || !password) return setError("Заполните оба поля");
     setError("");
     try {
-      await onAdd(name.trim(), password);
+      await onAdd(name.trim(), password, isSenior);
       setName("");
       setPassword("");
+      setIsSenior(false);
     } catch (err) {
       setError(err.message);
     }
@@ -432,10 +464,14 @@ function TechniciansPanel({ technicians, onAdd, onDelete }) {
         <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Пароль" style={{ ...inputStyle, flex: 1 }} />
         <button onClick={add} style={{ height: 36, padding: "0 14px", borderRadius: 8, border: "0.5px solid #c9c7bd", background: "transparent", cursor: "pointer" }}>+</button>
       </div>
+      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#767468" }}>
+        <input type="checkbox" checked={isSenior} onChange={(e) => setIsSenior(e.target.checked)} />
+        Старший техник (видит очередь всей смены)
+      </label>
       {error && <span style={{ fontSize: 13, color: "#a32d2d" }}>{error}</span>}
       {technicians.map((t) => (
         <div key={t.id} style={{ border: "0.5px solid #e3e1d9", borderRadius: 10, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span style={{ fontWeight: 500, fontSize: 14 }}>{t.name}</span>
+          <span style={{ fontWeight: 500, fontSize: 14 }}>{t.name}{t.isSenior ? " · старший" : ""}</span>
           {confirmDeleteId === t.id ? (
             <div style={{ display: "flex", gap: 6 }}>
               <button onClick={() => { onDelete(t.id); setConfirmDeleteId(null); }} style={{ fontSize: 12, padding: "4px 10px", borderRadius: 8, border: "0.5px solid #a32d2d", color: "#a32d2d", background: "transparent", cursor: "pointer" }}>Удалить</button>
@@ -512,18 +548,20 @@ function StatsPanel({ authHeader }) {
   );
 }
 
-function TechnicianView({ authHeader, onLogout, name }) {
+function TechnicianView({ authHeader, onLogout, name, isSenior }) {
   const [tasks, setTasks] = useState([]);
   const [stats, setStats] = useState({ inProgress: 0, completedToday: 0, earnedToday: 0 });
+  const [viewAll, setViewAll] = useState(false);
 
   const load = useCallback(async () => {
+    const query = viewAll ? "?all=true" : "";
     const [tasksRes, statsRes] = await Promise.all([
-      fetch(`${API_BASE}/tasks/mine`, { headers: authHeader() }),
+      fetch(`${API_BASE}/tasks/mine${query}`, { headers: authHeader() }),
       fetch(`${API_BASE}/tasks/stats`, { headers: authHeader() }),
     ]);
     if (tasksRes.ok) setTasks(await tasksRes.json());
     if (statsRes.ok) setStats(await statsRes.json());
-  }, [authHeader]);
+  }, [authHeader, viewAll]);
 
   useEffect(() => {
     load();
@@ -545,6 +583,13 @@ function TechnicianView({ authHeader, onLogout, name }) {
         </div>
         <button onClick={onLogout} style={{ fontSize: 13, padding: "6px 12px", borderRadius: 8, border: "0.5px solid #c9c7bd", background: "transparent", cursor: "pointer" }}>Выйти</button>
       </div>
+
+      {isSenior && (
+        <div style={{ display: "flex", gap: 4, background: "#efede4", borderRadius: 999, padding: 3 }}>
+          <button onClick={() => setViewAll(false)} style={{ flex: 1, fontSize: 13, padding: "8px 0", borderRadius: 999, border: "none", cursor: "pointer", background: !viewAll ? "#fff" : "transparent", fontWeight: !viewAll ? 500 : 400 }}>Моя очередь</button>
+          <button onClick={() => setViewAll(true)} style={{ flex: 1, fontSize: 13, padding: "8px 0", borderRadius: 999, border: "none", cursor: "pointer", background: viewAll ? "#fff" : "transparent", fontWeight: viewAll ? 500 : 400 }}>Вся смена</button>
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 8 }}>
         <div style={{ flex: 1, border: "0.5px solid #e3e1d9", borderRadius: 10, padding: "10px 12px", textAlign: "center" }}>
@@ -569,17 +614,23 @@ function TechnicianView({ authHeader, onLogout, name }) {
               <span style={{ fontWeight: 500, fontSize: 15 }}>{t.patient}</span>
               <span style={{ fontSize: 12, color: "#767468" }}>до {formatDue(t.dueDate)}</span>
             </div>
-            <p style={{ fontSize: 13, color: "#767468", margin: 0 }}>{t.clinic} · {t.workType} · {TASK_LABELS[t.taskType]}</p>
-            <p style={{ fontSize: 12, color: "#9a988c", margin: 0 }}>Кол-во: {t.quantity ?? "—"} · Сумма: {t.price ?? "—"} ₽</p>
+            <p style={{ fontSize: 13, color: "#767468", margin: 0 }}>{t.clinic} · {t.workType} · {TASK_LABELS[t.taskType]}{t.technicianName ? ` · ${t.technicianName}` : ""}</p>
+            <p style={{ fontSize: 12, color: "#9a988c", margin: 0 }}>Кол-во: {t.quantity ?? "—"}{t.mine !== false ? ` · Сумма: ${t.price ?? "—"} ₽` : ""}</p>
             <div style={{ display: "flex", gap: 8 }}>
-              {t.status === "pending" && (
-                <button onClick={() => act(t.orderId, t.taskType, "start")} style={{ flex: 1, height: 34, borderRadius: 8, border: "none", background: "#1a1a18", color: "#fff", fontSize: 13, cursor: "pointer" }}>Взять в работу</button>
-              )}
-              {t.status === "in_progress" && (
-                <button onClick={() => act(t.orderId, t.taskType, "complete")} style={{ flex: 1, height: 34, borderRadius: 8, border: "none", background: "#1a1a18", color: "#fff", fontSize: 13, cursor: "pointer" }}>Завершить</button>
-              )}
-              {t.status === "done" && (
-                <span style={{ flex: 1, height: 34, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: "#27500A", background: "#EAF3DE", borderRadius: 8 }}>Готово</span>
+              {t.mine === false ? (
+                <span style={{ flex: 1, height: 34, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: "#767468" }}>{TASK_STATUS_LABEL[t.status] || t.status}</span>
+              ) : (
+                <>
+                  {t.status === "pending" && (
+                    <button onClick={() => act(t.orderId, t.taskType, "start")} style={{ flex: 1, height: 34, borderRadius: 8, border: "none", background: "#1a1a18", color: "#fff", fontSize: 13, cursor: "pointer" }}>Взять в работу</button>
+                  )}
+                  {t.status === "in_progress" && (
+                    <button onClick={() => act(t.orderId, t.taskType, "complete")} style={{ flex: 1, height: 34, borderRadius: 8, border: "none", background: "#1a1a18", color: "#fff", fontSize: 13, cursor: "pointer" }}>Завершить</button>
+                  )}
+                  {t.status === "done" && (
+                    <span style={{ flex: 1, height: 34, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: "#27500A", background: "#EAF3DE", borderRadius: 8 }}>Готово</span>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -600,6 +651,9 @@ export default function DentalLabTracker() {
   const [priceList, setPriceList] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [view, setView] = useState("orders");
+  const [search, setSearch] = useState("");
+  const [stageFilter, setStageFilter] = useState("");
+  const [onlyOverdue, setOnlyOverdue] = useState(false);
   const [loadError, setLoadError] = useState("");
 
   const authHeader = useCallback(() => ({ Authorization: `Bearer ${session?.token}` }), [session]);
@@ -694,11 +748,11 @@ export default function DentalLabTracker() {
     return null;
   };
 
-  const addTechnician = async (name, password) => {
+  const addTechnician = async (name, password, isSenior) => {
     const res = await fetch(`${API_BASE}/technicians`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...authHeader() },
-      body: JSON.stringify({ name, password }),
+      body: JSON.stringify({ name, password, isSenior }),
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
@@ -738,12 +792,38 @@ export default function DentalLabTracker() {
     loadOrders();
   };
 
+  const today = new Date().toISOString().slice(0, 10);
+  const filteredOrders = orders.filter((o) => {
+    if (stageFilter && o.stage !== stageFilter) return false;
+    if (onlyOverdue && !(o.dueDate < today && o.stage !== "Отправлено")) return false;
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      const haystack = `${o.patient} ${o.clinic} ${o.doctor || ""}`.toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
+    return true;
+  });
+
+  const exportCsv = async () => {
+    const res = await fetch(`${API_BASE}/orders/export.csv`, { headers: authHeader() });
+    if (!res.ok) return;
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "orders.csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   if (!session) {
     return <AuthScreen onLogin={handleLogin} />;
   }
 
   if (session.role === "technician") {
-    return <TechnicianView authHeader={authHeader} onLogout={handleLogout} name={session.name} />;
+    return <TechnicianView authHeader={authHeader} onLogout={handleLogout} name={session.name} isSenior={session.isSenior} />;
   }
 
   const labTabs = [
@@ -786,8 +866,25 @@ export default function DentalLabTracker() {
       {view === "orders" && (
         <>
           {showForm && <NewOrderForm doctors={doctors} onAddDoctor={addDoctor} onCreate={createOrder} onCancel={() => setShowForm(false)} />}
+
+          <div style={{ display: "flex", gap: 8 }}>
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Поиск: пациент, клиника, врач" style={{ ...inputStyle, flex: 1 }} />
+            <button onClick={exportCsv} style={{ height: 36, padding: "0 12px", borderRadius: 8, border: "0.5px solid #c9c7bd", background: "transparent", fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}>Экспорт CSV</button>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <select value={stageFilter} onChange={(e) => setStageFilter(e.target.value)} style={{ ...inputStyle, height: 32, flex: 1, minWidth: 140 }}>
+              <option value="">Все этапы</option>
+              {STAGES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "#767468" }}>
+              <input type="checkbox" checked={onlyOverdue} onChange={(e) => setOnlyOverdue(e.target.checked)} />
+              Только просроченные
+            </label>
+          </div>
+
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {orders.map((o) => <OrderCard key={o.id} order={o} role={session.role} technicians={technicians} priceList={priceList} onAdvance={advance} onAssign={assign} />)}
+            {filteredOrders.length === 0 && <p style={{ fontSize: 13, color: "#767468" }}>Ничего не найдено.</p>}
+            {filteredOrders.map((o) => <OrderCard key={o.id} order={o} role={session.role} technicians={technicians} priceList={priceList} authHeader={authHeader} onAdvance={advance} onAssign={assign} />)}
           </div>
         </>
       )}

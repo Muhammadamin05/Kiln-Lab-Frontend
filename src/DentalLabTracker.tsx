@@ -214,20 +214,100 @@ function AssignRow({ label, task, taskType, orderId, technicians, priceList, wor
   );
 }
 
-function OrderCard({ order, role, technicians, priceList, authHeader, onAdvance, onAssign }) {
+function OrderComments({ orderId, authHeader, myName }) {
+  const [comments, setComments] = useState(null);
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const load = useCallback(() => {
+    fetch(`${API_BASE}/orders/${orderId}/comments`, { headers: authHeader() })
+      .then((res) => res.ok ? res.json() : [])
+      .then(setComments);
+  }, [orderId, authHeader]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const send = async () => {
+    if (!text.trim()) return;
+    setSending(true);
+    try {
+      const res = await fetch(`${API_BASE}/orders/${orderId}/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader() },
+        body: JSON.stringify({ text: text.trim() }),
+      });
+      if (res.ok) {
+        setText("");
+        load();
+      }
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (comments === null) return <p style={{ fontSize: 12, color: "#9a988c" }}>Загрузка…</p>;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {comments.length === 0 && <p style={{ fontSize: 12, color: "#9a988c", margin: 0 }}>Пока нет комментариев.</p>}
+      {comments.map((c) => (
+        <div key={c.id} style={{ fontSize: 12 }}>
+          <span style={{ fontWeight: 500 }}>{c.authorName}</span>
+          <span style={{ color: "#9a988c" }}> · {new Date(c.createdAt).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+          <p style={{ margin: "2px 0 0", color: "#767468" }}>{c.text}</p>
+        </div>
+      ))}
+      <div style={{ display: "flex", gap: 6 }}>
+        <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Написать комментарий…" style={{ ...inputStyle, height: 32, flex: 1 }} onKeyDown={(e) => e.key === "Enter" && send()} />
+        <button onClick={send} disabled={sending} style={{ height: 32, padding: "0 12px", borderRadius: 8, border: "0.5px solid #c9c7bd", background: "transparent", fontSize: 12, cursor: "pointer" }}>Отправить</button>
+      </div>
+    </div>
+  );
+}
+
+function OrderCard({ order, role, technicians, priceList, authHeader, myName, onAdvance, onAssign, onDuplicate }) {
   const colors = STAGE_COLORS[order.stage];
   const progressPct = Math.round(((order.stageIndex + 1) / STAGES.length) * 100);
   const canAdvance = role === "lab" && order.stageIndex < STAGES.length - 1;
   const [showAssign, setShowAssign] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showComments, setShowComments] = useState(false);
   const fittingDates = (order.fittingDates || []).filter(Boolean);
   const assignedTasks = TASK_TYPES.filter((t) => order[t].technicianName);
+  const today = new Date().toISOString().slice(0, 10);
+  const isOverdue = order.dueDate < today && order.stage !== "Отправлено";
+  const isDueSoon = !isOverdue && order.dueDate <= new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10) && order.stage !== "Отправлено";
+
+  const printOrder = () => {
+    const win = window.open("", "_blank");
+    win.document.write(`
+      <html><head><title>Заказ — ${order.patient}</title>
+      <style>body{font-family:system-ui,sans-serif;padding:24px;color:#1a1a18} h1{font-size:18px} table{width:100%;border-collapse:collapse;margin-top:12px} td{padding:6px 0;border-bottom:1px solid #e3e1d9;font-size:14px} td:first-child{color:#767468;width:40%}</style>
+      </head><body>
+      <h1>Бланк заказа — ${order.patient}</h1>
+      <table>
+        <tr><td>Клиника</td><td>${order.clinic}</td></tr>
+        <tr><td>Врач</td><td>${order.doctor || "—"}</td></tr>
+        <tr><td>Тип работы</td><td>${order.workType}</td></tr>
+        <tr><td>Оттенок</td><td>${order.shade || "—"}</td></tr>
+        <tr><td>Зубы</td><td>${order.toothPositions || "—"}</td></tr>
+        <tr><td>Ложка/оттиск</td><td>${order.trayInfo || "—"}</td></tr>
+        <tr><td>Срок сдачи</td><td>${formatDue(order.dueDate)}</td></tr>
+        <tr><td>Этап</td><td>${order.stage}</td></tr>
+      </table>
+      </body></html>
+    `);
+    win.document.close();
+    win.print();
+  };
 
   return (
-    <div style={{ border: "0.5px solid #e3e1d9", borderRadius: 12, padding: "14px 16px", background: "#fff", display: "flex", flexDirection: "column", gap: 10 }}>
+    <div style={{ border: isOverdue ? "1px solid #a32d2d" : isDueSoon ? "1px solid #b8860b" : "0.5px solid #e3e1d9", borderRadius: 12, padding: "14px 16px", background: "#fff", display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
         <span style={{ fontWeight: 500, fontSize: 15 }}>{order.patient}</span>
-        <span style={{ fontSize: 12, color: "#767468" }}>до {formatDue(order.dueDate)}</span>
+        <span style={{ fontSize: 12, color: isOverdue ? "#a32d2d" : isDueSoon ? "#b8860b" : "#767468", fontWeight: isOverdue || isDueSoon ? 600 : 400 }}>
+          {isOverdue ? "Просрочено · " : isDueSoon ? "Скоро · " : ""}до {formatDue(order.dueDate)}
+        </span>
       </div>
       <p style={{ fontSize: 13, color: "#767468", margin: 0 }}>
         {order.clinic} · {order.workType} · оттенок {order.shade || "—"}
@@ -272,6 +352,17 @@ function OrderCard({ order, role, technicians, priceList, authHeader, onAdvance,
         <button onClick={() => setShowHistory((v) => !v)} style={{ fontSize: 13, padding: "6px 12px", borderRadius: 8, border: "0.5px solid #c9c7bd", background: "transparent", cursor: "pointer" }}>
           {showHistory ? "Скрыть историю" : "История"}
         </button>
+        <button onClick={() => setShowComments((v) => !v)} style={{ fontSize: 13, padding: "6px 12px", borderRadius: 8, border: "0.5px solid #c9c7bd", background: "transparent", cursor: "pointer" }}>
+          {showComments ? "Скрыть комментарии" : "Комментарии"}
+        </button>
+        <button onClick={printOrder} style={{ fontSize: 13, padding: "6px 12px", borderRadius: 8, border: "0.5px solid #c9c7bd", background: "transparent", cursor: "pointer" }}>
+          Печать
+        </button>
+        {role === "clinic" && onDuplicate && (
+          <button onClick={() => onDuplicate(order)} style={{ fontSize: 13, padding: "6px 12px", borderRadius: 8, border: "0.5px solid #c9c7bd", background: "transparent", cursor: "pointer" }}>
+            Дублировать
+          </button>
+        )}
       </div>
 
       {showAssign && (
@@ -283,19 +374,21 @@ function OrderCard({ order, role, technicians, priceList, authHeader, onAdvance,
       )}
 
       {showHistory && <OrderHistory orderId={order.id} authHeader={authHeader} />}
+      {showComments && <OrderComments orderId={order.id} authHeader={authHeader} myName={myName} />}
     </div>
   );
 }
 
-function NewOrderForm({ doctors, onAddDoctor, onCreate, onCancel }) {
-  const [patient, setPatient] = useState("");
-  const [doctor, setDoctor] = useState("");
+function NewOrderForm({ doctors, onAddDoctor, onCreate, onCancel, initialValues }) {
+  const iv = initialValues || {};
+  const [patient, setPatient] = useState(iv.patient || "");
+  const [doctor, setDoctor] = useState(iv.doctor || "");
   const [newDoctorName, setNewDoctorName] = useState("");
-  const [selectedTeeth, setSelectedTeeth] = useState([]);
-  const [workType, setWorkType] = useState(WORK_TYPES[0]);
-  const [shade, setShade] = useState("");
+  const [selectedTeeth, setSelectedTeeth] = useState(iv.selectedTeeth || []);
+  const [workType, setWorkType] = useState(iv.workType || WORK_TYPES[0]);
+  const [shade, setShade] = useState(iv.shade || "");
   const [dueDate, setDueDate] = useState("");
-  const [trayInfo, setTrayInfo] = useState("");
+  const [trayInfo, setTrayInfo] = useState(iv.trayInfo || "");
   const [fittingDate1, setFittingDate1] = useState("");
   const [fittingDate2, setFittingDate2] = useState("");
   const [fittingDate3, setFittingDate3] = useState("");
@@ -610,12 +703,17 @@ function StatsPanel({ authHeader }) {
       .then(setStats);
   }, [authHeader]);
 
+  const maxEarned = Math.max(1, ...stats.map((s) => s.earnedTotal));
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {stats.length === 0 && <p style={{ fontSize: 13, color: "#767468" }}>Пока нет техников или выполненных работ.</p>}
       {stats.map((s) => (
-        <div key={s.id} style={{ border: "0.5px solid #e3e1d9", borderRadius: 10, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
+        <div key={s.id} style={{ border: "0.5px solid #e3e1d9", borderRadius: 10, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
           <span style={{ fontWeight: 500, fontSize: 14 }}>{s.name}</span>
+          <div style={{ height: 8, background: "#efede4", borderRadius: 999, overflow: "hidden" }}>
+            <div style={{ width: `${(s.earnedTotal / maxEarned) * 100}%`, height: "100%", background: "#534AB7" }} />
+          </div>
           <span style={{ fontSize: 12, color: "#767468" }}>Сегодня: {s.completedToday} шт · {s.earnedToday} ₽</span>
           <span style={{ fontSize: 12, color: "#767468" }}>Всего: {s.completedTotal} шт · {s.earnedTotal} ₽</span>
           <span style={{ fontSize: 12, color: "#767468" }}>В работе сейчас: {s.inProgress}</span>
@@ -717,6 +815,58 @@ function TechnicianView({ authHeader, onLogout, name, isSenior }) {
   );
 }
 
+function KanbanBoard({ orders, technicians, priceList, authHeader, myName, onAdvance, onAssign }) {
+  return (
+    <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 8 }}>
+      {STAGES.map((stage) => {
+        const stageOrders = orders.filter((o) => o.stage === stage);
+        return (
+          <div key={stage} style={{ minWidth: 220, flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "#767468", padding: "0 4px" }}>{stage} ({stageOrders.length})</div>
+            {stageOrders.map((o) => (
+              <div key={o.id} style={{ width: 220 }}>
+                <OrderCard order={o} role="lab" technicians={technicians} priceList={priceList} authHeader={authHeader} myName={myName} onAdvance={onAdvance} onAssign={onAssign} />
+              </div>
+            ))}
+            {stageOrders.length === 0 && <p style={{ fontSize: 12, color: "#c9c7bd", padding: "0 4px" }}>Пусто</p>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ActivityFeed({ authHeader }) {
+  const [events, setEvents] = useState(null);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/activity`, { headers: authHeader() })
+      .then((res) => res.ok ? res.json() : [])
+      .then(setEvents);
+  }, [authHeader]);
+
+  if (events === null) return <p style={{ fontSize: 13, color: "#767468" }}>Загрузка…</p>;
+  if (events.length === 0) return <p style={{ fontSize: 13, color: "#767468" }}>Пока нет активности.</p>;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {events.map((e, i) => (
+        <div key={i} style={{ border: "0.5px solid #e3e1d9", borderRadius: 10, padding: "10px 12px", fontSize: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ fontWeight: 500 }}>{e.patient} · {e.clinic}</span>
+            <span style={{ color: "#9a988c" }}>{new Date(e.at).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+          </div>
+          {e.type === "stage" ? (
+            <p style={{ margin: "4px 0 0", color: "#767468" }}>Этап изменён на «{e.stage}»</p>
+          ) : (
+            <p style={{ margin: "4px 0 0", color: "#767468" }}>{e.author}: {e.text}</p>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function DentalLabTracker() {
   const [session, setSession] = useState(() => {
     const saved = localStorage.getItem("kiln-lab-session");
@@ -731,6 +881,8 @@ export default function DentalLabTracker() {
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState("");
   const [onlyOverdue, setOnlyOverdue] = useState(false);
+  const [boardView, setBoardView] = useState(false);
+  const [duplicateFrom, setDuplicateFrom] = useState(null);
   const [loadError, setLoadError] = useState("");
 
   const authHeader = useCallback(() => ({ Authorization: `Bearer ${session?.token}` }), [session]);
@@ -909,6 +1061,7 @@ export default function DentalLabTracker() {
     ["technicians", "Техники"],
     ["prices", "Прайс"],
     ["stats", "Статистика"],
+    ["activity", "Активность"],
     ["plan", "Тариф"],
   ];
 
@@ -941,10 +1094,11 @@ export default function DentalLabTracker() {
       {view === "technicians" && <TechniciansPanel technicians={technicians} onAdd={addTechnician} onDelete={deleteTechnician} />}
       {view === "prices" && <PriceListPanel priceList={priceList} onSave={savePrice} />}
       {view === "stats" && <StatsPanel authHeader={authHeader} />}
+      {view === "activity" && <ActivityFeed authHeader={authHeader} />}
       {view === "plan" && <PlanPanel authHeader={authHeader} />}
       {view === "orders" && (
         <>
-          {showForm && <NewOrderForm doctors={doctors} onAddDoctor={addDoctor} onCreate={createOrder} onCancel={() => setShowForm(false)} />}
+          {showForm && <NewOrderForm doctors={doctors} onAddDoctor={addDoctor} onCreate={createOrder} onCancel={() => { setShowForm(false); setDuplicateFrom(null); }} initialValues={duplicateFrom} />}
 
           <div style={{ display: "flex", gap: 8 }}>
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Поиск: пациент, клиника, врач" style={{ ...inputStyle, flex: 1 }} />
@@ -959,12 +1113,34 @@ export default function DentalLabTracker() {
               <input type="checkbox" checked={onlyOverdue} onChange={(e) => setOnlyOverdue(e.target.checked)} />
               Только просроченные
             </label>
+            {session.role === "lab" && (
+              <div style={{ display: "flex", gap: 4, background: "#efede4", borderRadius: 999, padding: 3 }}>
+                <button onClick={() => setBoardView(false)} style={{ fontSize: 11, padding: "6px 10px", borderRadius: 999, border: "none", cursor: "pointer", background: !boardView ? "#fff" : "transparent", fontWeight: !boardView ? 500 : 400 }}>Список</button>
+                <button onClick={() => setBoardView(true)} style={{ fontSize: 11, padding: "6px 10px", borderRadius: 999, border: "none", cursor: "pointer", background: boardView ? "#fff" : "transparent", fontWeight: boardView ? 500 : 400 }}>Канбан</button>
+              </div>
+            )}
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {filteredOrders.length === 0 && <p style={{ fontSize: 13, color: "#767468" }}>Ничего не найдено.</p>}
-            {filteredOrders.map((o) => <OrderCard key={o.id} order={o} role={session.role} technicians={technicians} priceList={priceList} authHeader={authHeader} onAdvance={advance} onAssign={assign} />)}
-          </div>
+          {boardView && session.role === "lab" ? (
+            <KanbanBoard orders={filteredOrders} technicians={technicians} priceList={priceList} authHeader={authHeader} myName={session.name} onAdvance={advance} onAssign={assign} />
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {filteredOrders.length === 0 && <p style={{ fontSize: 13, color: "#767468" }}>Ничего не найдено.</p>}
+              {filteredOrders.map((o) => (
+                <OrderCard
+                  key={o.id} order={o} role={session.role} technicians={technicians} priceList={priceList}
+                  authHeader={authHeader} myName={session.name} onAdvance={advance} onAssign={assign}
+                  onDuplicate={session.role === "clinic" ? (order) => {
+                    setDuplicateFrom({
+                      patient: "", doctor: order.doctor, workType: order.workType, shade: order.shade,
+                      trayInfo: order.trayInfo, selectedTeeth: (order.toothPositions || "").split(",").map((s) => s.trim()).filter(Boolean).map(Number),
+                    });
+                    setShowForm(true);
+                  } : null}
+                />
+              ))}
+            </div>
+          )}
         </>
       )}
     </div>

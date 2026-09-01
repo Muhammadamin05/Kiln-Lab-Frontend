@@ -63,8 +63,8 @@ const WORK_TYPES = [
   "Изготовление силиконового ключа",
 ];
 const QUICK_SHADES = ["A1", "A2", "A3", "B1", "B2", "C2"];
-const TASK_TYPES = ["modeling", "ceramist", "cadcam"];
-const TASK_LABELS = { modeling: "Моделировка", ceramist: "Керамист", cadcam: "Cad/Cam моделирование" };
+const TASK_TYPES = ["modeling", "cadcam"];
+const TASK_LABELS = { modeling: "Техник", cadcam: "Cad/Cam моделирование" };
 const TASK_STATUS_LABEL = { pending: "Не начато", in_progress: "В работе", done: "Готово" };
 const FREE_CLINIC_LIMIT_LABEL = 2;
 const FREE_TECH_LIMIT_LABEL = 1;

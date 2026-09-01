@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 
-const API_BASE = "https://kiln-lab-production.up.railway.app/api";
+const API_BASE = "https://kiln-lab-nest-production.up.railway.app/api";
 
 const STAGE_COLORS = {
   "Принят": { bg: "#E6F1FB", text: "#0C447C" },
